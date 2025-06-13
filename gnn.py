@@ -55,7 +55,7 @@ class GIN(nn.Module):
 def train_epoch(model: nn.Module, loader: DataLoader, mean: torch.Tensor,
                 std: torch.Tensor, device: torch.device,
                 optimizer: torch.optim.Optimizer,
-                target_idx: int) -> float:
+                target_ID: int) -> float:
     """Run one training epoch."""
     model.train()
     total_loss = 0.0
@@ -63,7 +63,7 @@ def train_epoch(model: nn.Module, loader: DataLoader, mean: torch.Tensor,
         data = data.to(device)
         optimizer.zero_grad()
         out = model(data)
-        targets = data.y.view(data.num_graphs, -1)[:, target_idx]
+        targets = data.y.view(data.num_graphs, -1)[:, target_ID]
         targets_norm = (targets - mean) / std
         loss = F.mse_loss(out, targets_norm, reduction="mean")
         loss.backward()
@@ -74,7 +74,7 @@ def train_epoch(model: nn.Module, loader: DataLoader, mean: torch.Tensor,
 
 def validate(model: nn.Module, loader: DataLoader, mean: torch.Tensor,
              std: torch.Tensor, device: torch.device,
-             target_idx: int) -> tuple[float, float, np.ndarray, np.ndarray]:
+             target_ID: int) -> tuple[float, float, np.ndarray, np.ndarray]:
     """Evaluate the model."""
     model.eval()
     sum_sq = 0.0
@@ -86,7 +86,7 @@ def validate(model: nn.Module, loader: DataLoader, mean: torch.Tensor,
             data = data.to(device)
             out_norm = model(data)
             out = out_norm * std + mean
-            y = data.y.view(data.num_graphs, -1)[:, target_idx]
+            y = data.y.view(data.num_graphs, -1)[:, target_ID]
             sum_sq += ((out - y) ** 2).sum().item()
             total += data.num_graphs
             preds.append(out.cpu().numpy())
@@ -105,14 +105,14 @@ def main() -> None:
     )
     parser.add_argument(
         "--target",
-        choices=["area", "rg", "rdf"],
+        choices=["area", "rg", "rdf", "coor"],
         default="area",
         help="Target variable to predict.",
     )
     args = parser.parse_args()
 
-    target_idx_map = {"area": 0, "rg": 2, "rdf": 4}
-    target_idx = target_idx_map[args.target]
+    target_map = {"area": 0, "rg": 2, "rdf": 4, "coor": 5}
+    target_ID = target_map[args.target]
 
     dataset = PolymerDataset(root=".")
     kf = KFold(n_splits=5, shuffle=True, random_state=42)
@@ -129,7 +129,7 @@ def main() -> None:
 
         targets = torch.tensor(
             [
-                train_subset[i].y.view(-1)[target_idx].item()
+                train_subset[i].y.view(-1)[target_ID].item()
                 for i in range(len(train_subset))
             ],
             dtype=torch.float32,
@@ -154,7 +154,7 @@ def main() -> None:
                 target_std,
                 device,
                 optimizer,
-                target_idx,
+                target_ID,
             )
 
         rmse, r2, preds_fold, targets_fold = validate(
@@ -163,7 +163,7 @@ def main() -> None:
             target_mean,
             target_std,
             device,
-            target_idx,
+            target_ID,
         )
         fold_rmse.append(rmse)
         fold_r2.append(r2)
