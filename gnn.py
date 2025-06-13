@@ -188,7 +188,7 @@ def main() -> None:
     plt.ylabel("Predicted Values")
     plt.title(f"Actual vs. Predicted {args.target.capitalize()}")
     plt.tight_layout()
-    plt.savefig(Path(f"{args.target}.png"), dpi=300)
+    plt.savefig(Path(f"plots/{args.target}.png"), dpi=300)
     plt.show()
 
 
