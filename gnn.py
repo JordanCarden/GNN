@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import argparse
 import math
 from pathlib import Path
 
@@ -53,7 +54,8 @@ class GIN(nn.Module):
 
 def train_epoch(model: nn.Module, loader: DataLoader, mean: torch.Tensor,
                 std: torch.Tensor, device: torch.device,
-                optimizer: torch.optim.Optimizer) -> float:
+                optimizer: torch.optim.Optimizer,
+                target_idx: int) -> float:
     """Run one training epoch."""
     model.train()
     total_loss = 0.0
@@ -61,7 +63,7 @@ def train_epoch(model: nn.Module, loader: DataLoader, mean: torch.Tensor,
         data = data.to(device)
         optimizer.zero_grad()
         out = model(data)
-        targets = data.y.view(data.num_graphs, -1)[:, 0]
+        targets = data.y.view(data.num_graphs, -1)[:, target_idx]
         targets_norm = (targets - mean) / std
         loss = F.mse_loss(out, targets_norm, reduction="mean")
         loss.backward()
@@ -71,7 +73,8 @@ def train_epoch(model: nn.Module, loader: DataLoader, mean: torch.Tensor,
 
 
 def validate(model: nn.Module, loader: DataLoader, mean: torch.Tensor,
-             std: torch.Tensor, device: torch.device) -> tuple[float, float, np.ndarray, np.ndarray]:
+             std: torch.Tensor, device: torch.device,
+             target_idx: int) -> tuple[float, float, np.ndarray, np.ndarray]:
     """Evaluate the model."""
     model.eval()
     sum_sq = 0.0
@@ -83,7 +86,7 @@ def validate(model: nn.Module, loader: DataLoader, mean: torch.Tensor,
             data = data.to(device)
             out_norm = model(data)
             out = out_norm * std + mean
-            y = data.y.view(data.num_graphs, -1)[:, 0]
+            y = data.y.view(data.num_graphs, -1)[:, target_idx]
             sum_sq += ((out - y) ** 2).sum().item()
             total += data.num_graphs
             preds.append(out.cpu().numpy())
@@ -97,6 +100,20 @@ def validate(model: nn.Module, loader: DataLoader, mean: torch.Tensor,
 
 def main() -> None:
     """Entry point for training script."""
+    parser = argparse.ArgumentParser(
+        description="Train a GIN model on the polymer dataset with cross-validation."
+    )
+    parser.add_argument(
+        "--target",
+        choices=["area", "rg", "rdf"],
+        default="area",
+        help="Target variable to predict.",
+    )
+    args = parser.parse_args()
+
+    target_idx_map = {"area": 0, "rg": 2, "rdf": 4}
+    target_idx = target_idx_map[args.target]
+
     dataset = PolymerDataset(root=".")
     kf = KFold(n_splits=5, shuffle=True, random_state=42)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -110,9 +127,13 @@ def main() -> None:
         train_subset = Subset(dataset, train_idx)
         val_subset = Subset(dataset, val_idx)
 
-        targets = torch.tensor([
-            train_subset[i].y.view(-1)[0].item() for i in range(len(train_subset))
-        ], dtype=torch.float32)
+        targets = torch.tensor(
+            [
+                train_subset[i].y.view(-1)[target_idx].item()
+                for i in range(len(train_subset))
+            ],
+            dtype=torch.float32,
+        )
         target_mean = targets.mean()
         target_std = targets.std() if targets.std() > 1e-6 else torch.tensor(1.0)
 
@@ -126,9 +147,24 @@ def main() -> None:
         target_std = target_std.to(device)
 
         for _ in range(1500):
-            train_epoch(model, train_loader, target_mean, target_std, device, optimizer)
+            train_epoch(
+                model,
+                train_loader,
+                target_mean,
+                target_std,
+                device,
+                optimizer,
+                target_idx,
+            )
 
-        rmse, r2, preds_fold, targets_fold = validate(model, val_loader, target_mean, target_std, device)
+        rmse, r2, preds_fold, targets_fold = validate(
+            model,
+            val_loader,
+            target_mean,
+            target_std,
+            device,
+            target_idx,
+        )
         fold_rmse.append(rmse)
         fold_r2.append(r2)
         all_preds.append(preds_fold)
@@ -150,9 +186,9 @@ def main() -> None:
     plt.plot(lims, lims, linestyle="--")
     plt.xlabel("Actual Values")
     plt.ylabel("Predicted Values")
-    plt.title("Actual vs. Predicted Area")
+    plt.title(f"Actual vs. Predicted {args.target.capitalize()}")
     plt.tight_layout()
-    plt.savefig(Path("area.png"), dpi=300)
+    plt.savefig(Path(f"{args.target}.png"), dpi=300)
     plt.show()
 
 
