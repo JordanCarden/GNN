@@ -55,13 +55,13 @@ def main() -> None:
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     target_map = {"area": 0, "rg": 2, "rdf": 4, "coor": 5}
 
-    with Path("normalization_stats.json").open() as f:
+    with Path("models/normalization_stats.json").open() as f:
         stats = json.load(f)
 
     models = {}
     for name in target_map:
         model = GIN(in_dim=3, hidden_dim=128).to(device)
-        state_dict = torch.load(f"model_{name}.pt", map_location=device)
+        state_dict = torch.load(f"models/model_{name}.pt", map_location=device)
         model.load_state_dict(state_dict)
         model.eval()
         models[name] = model
