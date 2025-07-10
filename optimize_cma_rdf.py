@@ -22,7 +22,7 @@ def vector_to_polymer(vector: List[float]) -> str:
     for idx, value in enumerate(vector, start=1):
         label_type = "S" if value > 0 else "E"
         length = int(round(abs(value)))
-        length = min(max(length, 0), 10)
+        length = min(max(length, 0), 20)
         input_list.append((idx, f"{label_type}{length}"))
     return str(input_list)
 
@@ -69,7 +69,7 @@ def optimize_for_length(
     objective = make_objective(model, device, stats, log)
     es = cma.CMAEvolutionStrategy(
         [0.0] * length,
-        5,
+        15,
         {
             "verb_disp": 0,
             "maxiter": max_iter,
@@ -85,7 +85,7 @@ def optimize_for_length(
 def main() -> None:
     """Run CMA-ES search and save logs to CSV files."""
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    MAX_ITERATIONS = 100
+    MAX_ITERATIONS = 7
 
     with Path("models/normalization_stats.json").open() as f:
         stats = json.load(f)
@@ -99,11 +99,14 @@ def main() -> None:
     logs_by_length: Dict[int, List[Tuple[str, float]]] = {}
     best_by_length: Dict[int, Tuple[str, float]] = {}
 
+    log_dir = Path("log")
+    log_dir.mkdir(exist_ok=True)
+
     for length in range(10, 21):
         best_polymer, best_value, logs = optimize_for_length(
             length, model, device, stats, MAX_ITERATIONS
         )
-        log_path = Path(f"rdf_log_length_{length}.csv")
+        log_path = log_dir / f"rdf_log_length_{length}.csv"
         with log_path.open("w", newline="") as csvfile:
             writer = csv.writer(csvfile)
             writer.writerow(["Polymer", "RDF"])
