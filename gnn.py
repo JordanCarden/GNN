@@ -105,13 +105,13 @@ def main() -> None:
     )
     parser.add_argument(
         "--target",
-        choices=["area", "rg", "rdf", "coor"],
+        choices=["area", "rg", "rdf"],
         default="area",
         help="Target variable to predict.",
     )
     args = parser.parse_args()
 
-    target_map = {"area": 0, "rg": 2, "rdf": 4, "coor": 5}
+    target_map = {"area": 0, "rg": 1, "rdf": 2}
     target_ID = target_map[args.target]
 
     dataset = PolymerDataset(root=".")

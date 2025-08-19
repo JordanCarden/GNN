@@ -53,7 +53,7 @@ def main() -> None:
     args = parser.parse_args()
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    target_map = {"area": 0, "rg": 2, "rdf": 4, "coor": 5}
+    target_map = {"area": 0, "rg": 1, "rdf": 2}
 
     with Path("models/normalization_stats.json").open() as f:
         stats = json.load(f)
