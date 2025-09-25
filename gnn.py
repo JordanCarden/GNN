@@ -137,16 +137,16 @@ def main() -> None:
         target_mean = targets.mean()
         target_std = targets.std() if targets.std() > 1e-6 else torch.tensor(1.0)
 
-        train_loader = DataLoader(train_subset, batch_size=16, shuffle=True)
-        val_loader = DataLoader(val_subset, batch_size=16)
+        train_loader = DataLoader(train_subset, batch_size=256, shuffle=True)
+        val_loader = DataLoader(val_subset, batch_size=256)
 
         model = GIN(in_dim=3, hidden_dim=128).to(device)
-        optimizer = torch.optim.Adam(model.parameters(), lr=5e-5, weight_decay=5e-4)
+        optimizer = torch.optim.Adam(model.parameters(), lr=1e-4)
 
         target_mean = target_mean.to(device)
         target_std = target_std.to(device)
 
-        for _ in range(1500):
+        for _ in range(1000):
             train_epoch(
                 model,
                 train_loader,
