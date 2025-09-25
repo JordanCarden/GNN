@@ -158,7 +158,7 @@ def make_objective(terms: List[Term], device: torch.device,
 # ---------- main ----------
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--length", type=int, default=15)
+    ap.add_argument("--length", type=int, default=10)
 
     # Which properties to use
     ap.add_argument("--use-area", action="store_true")
@@ -195,7 +195,7 @@ def main():
     ap.add_argument("--maxiter", type=int, default=1000)
     ap.add_argument("--restarts", type=int, default=4)
     ap.add_argument("--incpopsize", type=int, default=2)
-    ap.add_argument("--timeout", type=float, default=600)
+    ap.add_argument("--timeout", type=float, default=300)
     ap.add_argument("--seed", type=int, default=42)
     args = ap.parse_args()
 
