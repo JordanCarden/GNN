@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import copy
 import math
 from pathlib import Path
 
@@ -74,13 +75,14 @@ def train_epoch(model: nn.Module, loader: DataLoader, mean: torch.Tensor,
 
 def validate(model: nn.Module, loader: DataLoader, mean: torch.Tensor,
              std: torch.Tensor, device: torch.device,
-             target_ID: int) -> tuple[float, float, np.ndarray, np.ndarray]:
+             target_ID: int, collect_outputs: bool = True
+             ) -> tuple[float, float, np.ndarray, np.ndarray]:
     """Evaluate the model."""
     model.eval()
     sum_sq = 0.0
     total = 0
-    preds = []
-    targets = []
+    preds: list[np.ndarray] = []
+    targets: list[np.ndarray] = []
     with torch.no_grad():
         for data in loader:
             data = data.to(device)
@@ -89,12 +91,18 @@ def validate(model: nn.Module, loader: DataLoader, mean: torch.Tensor,
             y = data.y.view(data.num_graphs, -1)[:, target_ID]
             sum_sq += ((out - y) ** 2).sum().item()
             total += data.num_graphs
-            preds.append(out.cpu().numpy())
-            targets.append(y.cpu().numpy())
+            if collect_outputs:
+                preds.append(out.cpu().numpy())
+                targets.append(y.cpu().numpy())
     rmse = math.sqrt(sum_sq / total)
-    preds_np = np.concatenate(preds)
-    targets_np = np.concatenate(targets)
-    r2 = r2_score(targets_np, preds_np)
+    if collect_outputs:
+        preds_np = np.concatenate(preds)
+        targets_np = np.concatenate(targets)
+        r2 = r2_score(targets_np, preds_np)
+    else:
+        preds_np = np.empty(0)
+        targets_np = np.empty(0)
+        r2 = float("nan")
     return rmse, r2, preds_np, targets_np
 
 
@@ -109,6 +117,24 @@ def main() -> None:
         default="area",
         help="Target variable to predict.",
     )
+    parser.add_argument(
+        "--max-epochs",
+        type=int,
+        default=1500,
+        help="Maximum number of training epochs per fold.",
+    )
+    parser.add_argument(
+        "--patience",
+        type=int,
+        default=250,
+        help="Number of epochs to wait for validation improvement before early stopping.",
+    )
+    parser.add_argument(
+        "--min-delta",
+        type=float,
+        default=0.0,
+        help="Minimum absolute improvement in validation RMSE to reset patience.",
+    )
     args = parser.parse_args()
 
     target_map = {"area": 0, "rg": 1, "rdf": 2}
@@ -120,6 +146,7 @@ def main() -> None:
 
     fold_rmse: list[float] = []
     fold_r2: list[float] = []
+    best_epochs: list[int] = []
     all_preds: list[np.ndarray] = []
     all_targets: list[np.ndarray] = []
 
@@ -146,7 +173,12 @@ def main() -> None:
         target_mean = target_mean.to(device)
         target_std = target_std.to(device)
 
-        for _ in range(1000):
+        best_rmse = float("inf")
+        best_epoch = 0
+        epochs_without_improve = 0
+        best_state: dict[str, torch.Tensor] | None = None
+
+        for epoch in range(1, args.max_epochs + 1):
             train_epoch(
                 model,
                 train_loader,
@@ -156,7 +188,41 @@ def main() -> None:
                 optimizer,
                 target_ID,
             )
+            val_rmse, _, _, _ = validate(
+                model,
+                val_loader,
+                target_mean,
+                target_std,
+                device,
+                target_ID,
+                collect_outputs=False,
+            )
+            improved = val_rmse + args.min_delta < best_rmse
+            if improved:
+                best_rmse = val_rmse
+                best_epoch = epoch
+                epochs_without_improve = 0
+                best_state = copy.deepcopy(model.state_dict())
+                print(
+                    f"Fold {fold} epoch {epoch}: validation RMSE improved to {val_rmse:.4f}"
+                )
+            else:
+                epochs_without_improve += 1
 
+            if args.patience > 0 and epochs_without_improve >= args.patience:
+                print(
+                    f"Fold {fold}: early stopping at epoch {epoch} (best RMSE {best_rmse:.4f} @ epoch {best_epoch})"
+                )
+                break
+        else:
+            print(
+                f"Fold {fold}: reached max epochs {args.max_epochs} (best RMSE {best_rmse:.4f} @ epoch {best_epoch})"
+            )
+
+        if best_state is not None:
+            model.load_state_dict(best_state)
+
+        best_epochs.append(best_epoch)
         rmse, r2, preds_fold, targets_fold = validate(
             model,
             val_loader,
@@ -173,6 +239,7 @@ def main() -> None:
 
     print(f"CV RMSE: {np.mean(fold_rmse):.4f} ± {np.std(fold_rmse):.4f}")
     print(f"CV R2: {np.mean(fold_r2):.4f} ± {np.std(fold_r2):.4f}")
+    print(f"Average best epoch: {np.mean(best_epochs):.1f}")
 
     all_preds_np = np.concatenate(all_preds)
     all_targets_np = np.concatenate(all_targets)

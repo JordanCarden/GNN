@@ -25,6 +25,7 @@ class PolymerDataset(InMemoryDataset):
 
         df = pd.read_csv(self.raw_paths[0])
         df = df.dropna(subset=["Area AVG", "RG AVG", "RDF Peak"])
+        df = df[df["RDF Peak"].ne(0)]
 
         data_list = []
         for _, row in df.iterrows():

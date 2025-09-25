@@ -27,15 +27,21 @@ def main() -> None:
         mean = targets.mean()
         std = targets.std() if targets.std() > 1e-6 else torch.tensor(1.0)
 
-        loader = DataLoader(dataset, batch_size=16, shuffle=True)
+        loader = DataLoader(dataset, batch_size=256, shuffle=True)
         model = GIN(in_dim=3, hidden_dim=128).to(device)
-        optimizer = torch.optim.Adam(model.parameters(), lr=5e-5, weight_decay=5e-4)
+        optimizer = torch.optim.Adam(model.parameters(), lr=5e-5)
+        scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
+            optimizer,
+            T_max=1500,
+            eta_min=1e-5,
+        )
 
         mean = mean.to(device)
         std = std.to(device)
 
         for _ in range(1500):
             train_epoch(model, loader, mean, std, device, optimizer, idx)
+            scheduler.step()
 
         torch.save(model.state_dict(), models_dir / f"model_{name}.pt")
         stats[name] = {"mean": float(mean.item()), "std": float(std.item())}
